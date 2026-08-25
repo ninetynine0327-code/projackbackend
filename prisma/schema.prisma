@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql" // หากใช้ PostgreSQL ให้เปลี่ยนเป็น "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------- ENUMS ----------------
+enum Role {
+  PATIENT
+  STAFF
+  ADMIN
+}
+
+enum AppointmentStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
+}
+
+// ---------------- MODELS ----------------
+
+// ตาราง 1: Users (คนไข้ / เจ้าหน้าที่ / ผู้ดูแลระบบ)
+model Users {
+  id           Int      @id @default(autoincrement())
+  full_name    String   @db.VarChar(100)
+  phone_number String   @unique @db.VarChar(20)
+  password     String         @db.VarChar(255)
+  role         Role     @default(PATIENT)
+  created_at   DateTime @default(now())
+
+  // ความสัมพันธ์: 1 คนไข้ สามารถมีได้หลายการนัดหมาย
+  appointments Appointments[]
+
+  @@map("users")
+}
+
+// ตาราง 2: Dentists (ทันตแพทย์)
+model Dentists {
+  id             Int      @id @default(autoincrement())
+  full_name      String   @db.VarChar(100)
+  specialization String   @default("Orthodontics") @db.VarChar(100)
+  created_at     DateTime @default(now())
+
+  // ความสัมพันธ์
+  schedules    Doctor_Schedules[]
+  appointments Appointments[]
+
+  @@map("dentists")
+}
+
+// ตาราง 3: Doctor_Schedules (ตารางออกเวรแพทย์)
+model Doctor_Schedules {
+  id           Int      @id @default(autoincrement())
+  dentist_id   Int
+  work_date    DateTime @db.Date
+  start_time   DateTime @db.Time
+  end_time     DateTime @db.Time
+  max_patients Int      @default(10)
+
+  // ความสัมพันธ์: เชื่อมโยงกับทันตแพทย์
+  dentist Dentists @relation(fields: [dentist_id], references: [id], onDelete: Cascade)
+
+  @@map("doctor_schedules")
+}
+
+// ตาราง 4: Appointments (การจองคิวนัดหมาย)
+model Appointments {
+  id               Int               @id @default(autoincrement())
+  user_id          Int
+  dentist_id       Int
+  appointment_date DateTime          @db.Date
+  time_slot        DateTime          @db.Time
+  status           AppointmentStatus @default(PENDING)
+  notes            String?           @db.Text
+  created_at       DateTime          @default(now())
+
+  // ความสัมพันธ์: เชื่อมกับคนไข้ และ ทันตแพทย์
+  user    Users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  dentist Dentists @relation(fields: [dentist_id], references: [id], onDelete: Cascade)
+
+  @@map("appointments")
+}
