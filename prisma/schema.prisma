@@ -8,10 +8,12 @@ datasource db {
 }
 
 // ---------------- ENUMS ----------------
+// ปรับให้ตรงกับที่ Frontend ส่งมา (user, admin, staff, dentist)
 enum Role {
-  PATIENT
-  STAFF
-  ADMIN
+  user
+  admin
+  staff
+  dentist
 }
 
 enum AppointmentStatus {
@@ -28,8 +30,8 @@ model Users {
   id           Int      @id @default(autoincrement())
   full_name    String   @db.VarChar(100)
   phone_number String   @unique @db.VarChar(20)
-  password     String         @db.VarChar(255)
-  role         Role     @default(PATIENT)
+  password     String   @db.VarChar(255)
+  role         Role     @default(user) // <--- ค่าเริ่มต้นคือ user (คนไข้)
   created_at   DateTime @default(now())
 
   // ความสัมพันธ์: 1 คนไข้ สามารถมีได้หลายการนัดหมาย

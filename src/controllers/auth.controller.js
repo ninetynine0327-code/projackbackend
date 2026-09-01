@@ -1,108 +1,90 @@
-const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 const prisma = require("../prisma");
 
-// 1. สมัครสมาชิก (Register)
+// ================= 1. สมัครสมาชิก (คนไข้) =================
 const register = async (req, res) => {
   try {
-    const { full_name, phone_number, password, role } = req.body;
-
+    const { full_name, phone_number, password } = req.body;
+    
     if (!full_name || !phone_number || !password) {
       return res.status(400).json({ message: "กรุณากรอกข้อมูลให้ครบถ้วน" });
     }
 
-    // ตรวจสอบชื่อ-นามสกุล หรือเบอร์โทรศัพท์ซ้ำ
     const existingUser = await prisma.users.findFirst({
-      where: {
-        OR: [
-          { full_name: full_name.trim() },
-          { phone_number: phone_number.trim() },
-        ],
-      },
+      where: { phone_number: String(phone_number) }
     });
 
     if (existingUser) {
-      return res.status(400).json({ message: "ชื่อ-นามสกุลหรือเบอร์โทรศัพท์นี้ถูกใช้งานแล้ว" });
+      return res.status(400).json({ message: "เบอร์โทรศัพท์นี้ถูกใช้งานแล้ว" });
     }
 
-    // แฮชรหัสผ่าน
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // บันทึกลงฐานข้อมูล
+    // สร้างข้อมูลใหม่ (DB จะเติม role 'user' ให้อัตโนมัติ)
     const newUser = await prisma.users.create({
       data: {
-        full_name: full_name.trim(),
-        phone_number: phone_number.trim(),
-        password: hashedPassword,
-        role: role || "PATIENT",
-      },
+        full_name: String(full_name),
+        phone_number: String(phone_number),
+        password: String(password)
+      }
     });
 
-    res.status(201).json({
+    return res.status(201).json({
       message: "สมัครสมาชิกสำเร็จ",
-      user: {
-        id: newUser.id,
-        full_name: newUser.full_name,
-        phone_number: newUser.phone_number,
-        role: newUser.role,
-      },
+      user: { id: newUser.id, full_name: newUser.full_name, phone_number: newUser.phone_number }
     });
-  } catch (error) {
-    console.error("REGISTER ERROR:", error);
-    res.status(500).json({ message: "เกิดข้อผิดพลาดในการสมัครสมาชิก", error: error.message });
+
+  } catch (err) {
+    console.error("DB ERROR:", err.message);
+    return res.status(500).json({ message: "Database Error", error: err.message });
   }
 };
 
-// 2. เข้าสู่ระบบ (Login ด้วย full_name)
-const login = async (req, res) => {
+// ================= 2. เข้าสู่ระบบคนไข้ =================
+const loginCustomer = async (req, res) => {
   try {
-    const { full_name, password } = req.body;
+    const { phone_number, password } = req.body;
 
-    if (!full_name || !password) {
-      return res.status(400).json({ message: "กรุณากรอกชื่อ-นามสกุลและรหัสผ่าน" });
-    }
-
-    // ค้นหาผู้ใช้จากชื่อ-นามสกุล
-    const user = await prisma.users.findFirst({
-      where: { full_name: full_name.trim() },
+    // เปลี่ยนมาค้นหาด้วยคำว่า "user" ให้ตรงกับโครงสร้างฐานข้อมูลใหม่
+    let user = await prisma.users.findFirst({
+      where: { 
+        phone_number: String(phone_number), 
+        role: "user" 
+      }
     });
 
-    if (!user) {
-      return res.status(401).json({ message: "ชื่อ-นามสกุลหรือรหัสผ่านไม่ถูกต้อง" });
+    if (!user || user.password !== String(password)) {
+      return res.status(401).json({ message: "เบอร์โทรศัพท์หรือรหัสผ่านไม่ถูกต้อง" });
     }
 
-    // ตรวจสอบรหัสผ่าน
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ message: "ชื่อ-นามสกุลหรือรหัสผ่านไม่ถูกต้อง" });
-    }
-
-    // สร้าง Token
-    const token = jwt.sign(
-      { userId: user.id, role: user.role },
-      process.env.JWT_SECRET || "default_secret",
-      { expiresIn: "1d" }
-    );
-
-    res.json({
-      message: "เข้าสู่ระบบสำเร็จ",
-      token,
-      user: {
-        id: user.id,
-        full_name: user.full_name,
-        phone_number: user.phone_number,
-        role: user.role,
-      },
-    });
-  } catch (error) {
-    console.error("LOGIN ERROR:", error);
-    res.status(500).json({ message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ", error: error.message });
+    const { password: _, ...userData } = user;
+    return res.status(200).json({ message: "เข้าสู่ระบบสำเร็จ", user: userData });
+  } catch (err) {
+    console.error("Login Error:", err.message);
+    return res.status(500).json({ message: "Database Error", error: err.message });
   }
 };
 
-// ส่งออกทั้งสองฟังก์ชัน
-module.exports = {
-  register,
-  login,
+// ================= 3. เข้าสู่ระบบพนักงาน =================
+const loginStaff = async (req, res) => {
+  try {
+    const { phone_number, password } = req.body;
+
+    // เปลี่ยนมาค้นหาด้วยคำว่า "admin", "staff", "dentist" ให้ตรงกับโครงสร้างฐานข้อมูลใหม่
+    let staff = await prisma.users.findFirst({
+      where: { 
+        phone_number: String(phone_number), 
+        role: { in: ["admin", "staff", "dentist"] } 
+      }
+    });
+
+    if (!staff || staff.password !== String(password)) {
+      return res.status(401).json({ message: "ไม่มีสิทธิ์เข้าใช้งาน หรือรหัสผ่านไม่ถูกต้อง" });
+    }
+
+    const { password: _, ...staffData } = staff;
+    return res.status(200).json({ message: "เข้าสู่ระบบพนักงานสำเร็จ", user: staffData });
+  } catch (err) {
+    console.error("Login Staff Error:", err.message);
+    return res.status(500).json({ message: "Database Error", error: err.message });
+  }
 };
+
+module.exports = { register, loginCustomer, loginStaff };
