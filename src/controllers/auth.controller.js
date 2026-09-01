@@ -1,89 +1,105 @@
 const prisma = require("../prisma");
 
-// ================= 1. สมัครสมาชิก (คนไข้) =================
+// สมัครสมาชิก (ค่าเริ่มต้น Role: user)
 const register = async (req, res) => {
   try {
     const { full_name, phone_number, password } = req.body;
-    
+
     if (!full_name || !phone_number || !password) {
       return res.status(400).json({ message: "กรุณากรอกข้อมูลให้ครบถ้วน" });
     }
 
-    const existingUser = await prisma.users.findFirst({
-      where: { phone_number: String(phone_number) }
+    const existingUser = await prisma.users.findUnique({
+      where: { phone_number: String(phone_number).trim() }
     });
 
     if (existingUser) {
-      return res.status(400).json({ message: "เบอร์โทรศัพท์นี้ถูกใช้งานแล้ว" });
+      return res.status(400).json({ message: "เบอร์โทรศัพท์นี้ถูกลงทะเบียนแล้ว" });
     }
 
-    // สร้างข้อมูลใหม่ (DB จะเติม role 'user' ให้อัตโนมัติ)
     const newUser = await prisma.users.create({
       data: {
-        full_name: String(full_name),
-        phone_number: String(phone_number),
-        password: String(password)
+        full_name: String(full_name).trim(),
+        phone_number: String(phone_number).trim(),
+        password: String(password),
+        role: "user"
       }
     });
 
-    return res.status(201).json({
+    res.status(201).json({
       message: "สมัครสมาชิกสำเร็จ",
-      user: { id: newUser.id, full_name: newUser.full_name, phone_number: newUser.phone_number }
+      user: {
+        id: newUser.id,
+        full_name: newUser.full_name,
+        phone_number: newUser.phone_number,
+        role: newUser.role
+      }
     });
-
-  } catch (err) {
-    console.error("DB ERROR:", err.message);
-    return res.status(500).json({ message: "Database Error", error: err.message });
+  } catch (error) {
+    console.error("Register Error:", error);
+    res.status(500).json({ message: "ไม่สามารถสมัครสมาชิกได้", error: error.message });
   }
 };
 
-// ================= 2. เข้าสู่ระบบคนไข้ =================
+// เข้าสู่ระบบคนไข้ (Role: user)
 const loginCustomer = async (req, res) => {
   try {
     const { phone_number, password } = req.body;
 
-    // เปลี่ยนมาค้นหาด้วยคำว่า "user" ให้ตรงกับโครงสร้างฐานข้อมูลใหม่
-    let user = await prisma.users.findFirst({
-      where: { 
-        phone_number: String(phone_number), 
-        role: "user" 
+    const user = await prisma.users.findFirst({
+      where: {
+        phone_number: String(phone_number).trim(),
+        password: String(password),
+        role: "user"
       }
     });
 
-    if (!user || user.password !== String(password)) {
+    if (!user) {
       return res.status(401).json({ message: "เบอร์โทรศัพท์หรือรหัสผ่านไม่ถูกต้อง" });
     }
 
-    const { password: _, ...userData } = user;
-    return res.status(200).json({ message: "เข้าสู่ระบบสำเร็จ", user: userData });
-  } catch (err) {
-    console.error("Login Error:", err.message);
-    return res.status(500).json({ message: "Database Error", error: err.message });
+    res.status(200).json({
+      message: "เข้าสู่ระบบสำเร็จ",
+      user: {
+        id: user.id,
+        full_name: user.full_name,
+        phone_number: user.phone_number,
+        role: user.role
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ", error: error.message });
   }
 };
 
-// ================= 3. เข้าสู่ระบบพนักงาน =================
+// เข้าสู่ระบบเจ้าหน้าที่ (Role: staff, admin, dentist)
 const loginStaff = async (req, res) => {
   try {
     const { phone_number, password } = req.body;
 
-    // เปลี่ยนมาค้นหาด้วยคำว่า "admin", "staff", "dentist" ให้ตรงกับโครงสร้างฐานข้อมูลใหม่
-    let staff = await prisma.users.findFirst({
-      where: { 
-        phone_number: String(phone_number), 
-        role: { in: ["admin", "staff", "dentist"] } 
+    const staffUser = await prisma.users.findFirst({
+      where: {
+        phone_number: String(phone_number).trim(),
+        password: String(password),
+        role: { in: ["staff", "admin", "dentist"] }
       }
     });
 
-    if (!staff || staff.password !== String(password)) {
-      return res.status(401).json({ message: "ไม่มีสิทธิ์เข้าใช้งาน หรือรหัสผ่านไม่ถูกต้อง" });
+    if (!staffUser) {
+      return res.status(401).json({ message: "ข้อมูลเข้าสู่ระบบเจ้าหน้าที่ไม่ถูกต้อง" });
     }
 
-    const { password: _, ...staffData } = staff;
-    return res.status(200).json({ message: "เข้าสู่ระบบพนักงานสำเร็จ", user: staffData });
-  } catch (err) {
-    console.error("Login Staff Error:", err.message);
-    return res.status(500).json({ message: "Database Error", error: err.message });
+    res.status(200).json({
+      message: "เข้าสู่ระบบเจ้าหน้าที่สำเร็จ",
+      user: {
+        id: staffUser.id,
+        full_name: staffUser.full_name,
+        phone_number: staffUser.phone_number,
+        role: staffUser.role
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: "เกิดข้อผิดพลาดในการเข้าสู่ระบบ", error: error.message });
   }
 };
 

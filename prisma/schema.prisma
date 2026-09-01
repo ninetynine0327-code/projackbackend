@@ -72,7 +72,7 @@ model Doctor_Schedules {
 // ตาราง 4: Appointments (การจองคิวนัดหมาย)
 model Appointments {
   id               Int               @id @default(autoincrement())
-  user_id          Int
+  user_id          Int  
   dentist_id       Int
   appointment_date DateTime          @db.Date
   time_slot        DateTime          @db.Time
