@@ -4,41 +4,28 @@ exports.createAppointment = async (req, res) => {
   try {
     const { user_id, dentist_id, appointment_date, time_slot, notes, patientName, patientPhone, treatment } = req.body;
 
+    const targetDentistId = Number(dentist_id);
     let targetUserId = user_id ? Number(user_id) : null;
-    let targetDentistId = dentist_id ? Number(dentist_id) : 1;
-
-    // 1. สร้างทันตแพทย์อัตโนมัติหากยังไม่มี ป้องกัน Foreign Key Constraint Error
-    await prisma.dentists.upsert({
-      where: { id: targetDentistId },
-      update: {},
-      create: {
-        id: targetDentistId,
-        full_name: "ทพญ. พิมพ์ชนก วงศ์ทันตกรรม",
-        specialization: "ทันตกรรมทั่วไป"
-      }
-    });
-
-    // 2. สร้าง User ให้กรณีไม่ได้ล็อกอิน
+    
     if (!targetUserId) {
-      const phone = patientPhone || `08${Date.now().toString().slice(-8)}`;
-      let user = await prisma.users.findUnique({
+      const phone = patientPhone ? String(patientPhone).trim() : `08${Date.now().toString().slice(-8)}`;
+      let guestUser = await prisma.users.findUnique({
         where: { phone_number: phone }
       });
 
-      if (!user) {
-        user = await prisma.users.create({
+      if (!guestUser) {
+        guestUser = await prisma.users.create({
           data: {
-            full_name: patientName || "คนไข้ทั่วไป",
+            full_name: patientName ? String(patientName).trim() : "คนไข้ทั่วไป",
             phone_number: phone,
             password: "guest_password",
             role: "user"
           }
         });
       }
-      targetUserId = user.id;
+      targetUserId = guestUser.id;
     }
 
-    // 3. แปลงชนิดข้อมูลวันที่และเวลาให้ตรงกับ MySQL
     const appDate = new Date(`${appointment_date}T00:00:00.000Z`);
     const timeFormatted = new Date(`1970-01-01T${time_slot || "09:00"}:00.000Z`);
 
@@ -51,16 +38,10 @@ exports.createAppointment = async (req, res) => {
         notes: notes || treatment || "ตรวจสุขภาพฟัน",
         status: "PENDING"
       },
-      include: {
-        user: true,
-        dentist: true
-      }
+      include: { user: true, dentist: true }
     });
 
-    return res.status(201).json({
-      message: "จองคิวสำเร็จ",
-      appointment: newAppointment
-    });
+    return res.status(201).json({ message: "จองคิวสำเร็จ", appointment: newAppointment });
   } catch (error) {
     console.error("Create Appointment Error:", error);
     return res.status(500).json({ message: "ไม่สามารถบันทึกคิวได้", error: error.message });
