@@ -1,11 +1,9 @@
-const express = require("express");
-const { register, loginCustomer, loginStaff } = require("../controllers/auth.controller");
-
+const express = require('express');
 const router = express.Router();
+const authController = require('../controllers/auth.controller');
 
-// กำหนด Path สำหรับระบบ Auth
-router.post("/auth/register", register);
-router.post("/auth/login/customer", loginCustomer);
-router.post("/auth/login/staff", loginStaff);
+router.post('/register', authController.register);
+router.post('/login/customer', authController.loginCustomer);
+router.post('/login/staff', authController.loginStaff);
 
 module.exports = router;
